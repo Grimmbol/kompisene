@@ -1,9 +1,11 @@
 #include "rasteriser.hpp"
+#include "globals.hpp"
 #include "utilities/lodepng.h"
 #include <vector>
 #include <iomanip>
 #include <chrono>
 #include <limits>
+//#include <mpi.h>
 
 const std::vector<globalLight> lightSources = { {{0.3f, 0.5f, 1.0f}, {1.0f, 1.0f, 1.0f}} };
 
@@ -35,7 +37,7 @@ void runVertexShader( Mesh &mesh,
 	mat4x4 translationMatrix(
 		1,			0,			0,			0 + positionOffset.x /*X*/,
 		0,			1,			0,			0 + positionOffset.y /*Y*/,
-		0,			0,			1,			-10 + positionOffset.z /*Z*/,
+		0,			0,			1,		 -10 + positionOffset.z /*Z*/,
 		0,			0,			0,			1);
 
 	mat4x4 scaleMatrix(
@@ -84,7 +86,6 @@ void runFragmentShader( std::vector<unsigned char> &frameBuffer,
                         float3 const &weights )
 {
 	float3 normal = face.getNormal(weights);
-
 	float3 colour(0);
 	for (globalLight const &l : lightSources) {
 		float3 lightNormal = normal * l.direction;
@@ -155,10 +156,13 @@ void renderMeshFractal(
 				float3 distanceOffset = {0, 0, 0}) {
 
 	// Start by rendering the mesh at this depth
+
+  int rotAng = 360/(num_processors/(cur_rank+1));
+
 	for (unsigned int i = 0; i < meshes.size(); i++) {
 		Mesh &mesh = meshes.at(i);
 		Mesh &transformedMesh = transformedMeshes.at(i);
-		runVertexShader(mesh, transformedMesh, distanceOffset, scale, width, height);
+		runVertexShader(mesh, transformedMesh, distanceOffset, scale, width, height, rotAng);
 		rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
 	}
 
