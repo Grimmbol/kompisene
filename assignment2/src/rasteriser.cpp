@@ -156,8 +156,8 @@ void renderMeshFractal(
 				float3 distanceOffset = {0, 0, 0}) {
 
 	// Start by rendering the mesh at this depth
-
-  int rotAng = 360/(num_processors/(cur_rank+1));
+  // Calculate a rotation angle to use based on the current process rank
+  int rotAng = 360/(num_processors/(render_arg+1));
 
 	for (unsigned int i = 0; i < meshes.size(); i++) {
 		Mesh &mesh = meshes.at(i);
