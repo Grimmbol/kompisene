@@ -1,11 +1,12 @@
 #include "rasteriser.hpp"
-#include "globals.hpp"
 #include "utilities/lodepng.h"
+#include "globals.hpp"
 #include <vector>
 #include <iomanip>
 #include <chrono>
 #include <limits>
-//#include <mpi.h>
+
+unsigned long long render_counter = -1;
 
 const std::vector<globalLight> lightSources = { {{0.3f, 0.5f, 1.0f}, {1.0f, 1.0f, 1.0f}} };
 
@@ -20,24 +21,24 @@ void runVertexShader( Mesh &mesh,
                       Mesh &transformedMesh,
                       float3 positionOffset,
                       float scale,
-                      unsigned int const width,
-                      unsigned int const height,
-                      float const rotationAngle = 0)
+					  unsigned int const width,
+					  unsigned int const height,
+				  	  float const rotationAngle = 0)
 {
 	float const pi = std::acos(-1);
 	// The matrices defined below are the ones used to transform the vertices and normals.
 
 	// This projection matrix assumes a 16:9 aspect ratio, and an field of view (FOV) of 90 degrees.
 	mat4x4 const projectionMatrix(
-		0.347270, 0.000000, 0.000000,	0.000000,
-		0.000000,	0.617370, 0.000000,	0.000000,
-		0.000000,	0.000000,-1.000000,-0.20000f,
-		0.000000, 0.000000,-1.000000, 0.000000);
+		0.347270,   0, 			0, 		0,
+		0,	  		0.617370, 	0,		0,
+		0,	  		0,			-1, 	-0.2f,
+		0,	  		0,			-1,		0);
 
 	mat4x4 translationMatrix(
 		1,			0,			0,			0 + positionOffset.x /*X*/,
 		0,			1,			0,			0 + positionOffset.y /*Y*/,
-		0,			0,			1,		 -10 + positionOffset.z /*Z*/,
+		0,			0,			1,			-10 + positionOffset.z /*Z*/,
 		0,			0,			0,			1);
 
 	mat4x4 scaleMatrix(
@@ -52,7 +53,7 @@ void runVertexShader( Mesh &mesh,
 		0, 			std::sin(0),	std::cos(0), 	0,
 		0, 			0,				0,				1);
 
-	float const rotationAngleRad = (pi / 4.0f) + (rotationAngle / (180.0f/pi));
+	float const rotationAngleRad= (pi / 4.0f) + (rotationAngle / (180.0f/pi));
 
 	mat4x4 const rotationMatrixY(
 		std::cos(rotationAngleRad),		0,			std::sin(rotationAngleRad), 	0,
@@ -81,11 +82,12 @@ void runVertexShader( Mesh &mesh,
 
 
 void runFragmentShader( std::vector<unsigned char> &frameBuffer,
-                        unsigned int const baseIndex,
-                        Face const &face,
-                        float3 const &weights )
+						unsigned int const baseIndex,
+						Face const &face,
+						float3 const &weights )
 {
 	float3 normal = face.getNormal(weights);
+
 	float3 colour(0);
 	for (globalLight const &l : lightSources) {
 		float3 lightNormal = normal * l.direction;
@@ -154,17 +156,16 @@ void renderMeshFractal(
 				int depthLimit,
 				float scale = 1.0,
 				float3 distanceOffset = {0, 0, 0}) {
-
+  render_counter += 1;
 	// Start by rendering the mesh at this depth
-  // Calculate a rotation angle to use based on the current process rank
-  int rotAng = 360/(num_processors/(render_arg+1));
-
-	for (unsigned int i = 0; i < meshes.size(); i++) {
-		Mesh &mesh = meshes.at(i);
-		Mesh &transformedMesh = transformedMeshes.at(i);
-		runVertexShader(mesh, transformedMesh, distanceOffset, scale, width, height, rotAng);
-		rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
-	}
+  if((uint32_t)cur_rank == (render_counter % num_processors)) {
+    for (unsigned int i = 0; i < meshes.size(); i++) {
+      Mesh &mesh = meshes.at(i);
+      Mesh &transformedMesh = transformedMeshes.at(i);
+      runVertexShader(mesh, transformedMesh, distanceOffset, scale, width, height);
+      rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
+    }
+  }
 
 	// Check whether we've reached the recursive depth of the fractal we want to reach
 	depthLimit--;
@@ -187,8 +188,12 @@ void renderMeshFractal(
 				float3 displacedOffset(
 					distanceOffset + offset * (largestBoundingBoxSide / 2.0f) * scale
 				);
+        /*printf("render_counter = %d, num_processsors: %d, mod = %d\n",
+               render_counter,
+               num_processors,
+               render_counter%num_processors);*/
 
-				renderMeshFractal(meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit, smallerScale, displacedOffset);
+          renderMeshFractal(meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit, smallerScale, displacedOffset);
 			}
 		}
 	}

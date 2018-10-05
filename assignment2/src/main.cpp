@@ -45,54 +45,6 @@ int main(int argc, char **argv) {
 
 	std::vector<Mesh> meshs = loadWavefront(input, false);
 
-  uint32_t lenghts[3] = {0,0,0};
-
-  if(cur_rank != 0) {
-    for (uint32_t i = 0; i < meshs.size(); i++) {
-      Mesh *current = &(meshs.at(i));
-
-      lenghts[0] = current->vertices.size();
-      current->vertices.clear();
-
-      lenghts[1] = current->textures.size();
-      current->textures.clear();
-
-      lenghts[2] = current->normals.size();
-      current->normals.clear();
-    }
-  }
-
-  MPI_Datatype MPI_float4, MPI_float3;
-
-
-  int blocklen_3[3] = {1,1,1};
-  int blocklen_4[4] = {1,1,1,1};
-
-  MPI_Aint displacements_3[3] = {0,sizeof(float), sizeof(float)*2};
-  MPI_Aint displacements_4[4] = {0,sizeof(float), sizeof(float)*2, sizeof(float)*3};
-
-  MPI_Datatype types_3[3] = {MPI_FLOAT, MPI_FLOAT, MPI_FLOAT};
-  MPI_Datatype types_4[4] = {MPI_FLOAT, MPI_FLOAT, MPI_FLOAT, MPI_FLOAT};
-
-  MPI_Type_create_struct(3, blocklen_3, displacements_3, types_3, &MPI_float3);
-  MPI_Type_create_struct(4, blocklen_4, displacements_4, types_4, &MPI_float4);
-
-  MPI_Type_commit(&MPI_float3);
-  MPI_Type_commit(&MPI_float4);
-
-  // Here we broadcast
-  for (uint32_t i = 0; i < meshs.size(); i++) {
-    Mesh *current_mesh = &(meshs.at(i));
-    if(cur_rank != 0) {
-      current_mesh->vertices.resize(lenghts[0]);
-      current_mesh->textures.resize(lenghts[1]);
-      current_mesh->normals.resize(lenghts[2]);
-    }
-    MPI_Bcast(&(current_mesh->vertices.at(0)), current_mesh->vertices.size(), MPI_float4, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&(current_mesh->textures.at(0)), current_mesh->textures.size(), MPI_float3, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&(current_mesh->normals.at(0)), current_mesh->normals.size(), MPI_float3, 0, MPI_COMM_WORLD);
-  }
-
 	std::vector<unsigned char> frameBuffer = rasterise(meshs, width, height, depth);
 
 
