@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <chrono>
 #include <limits>
+#include <mpi.h>
 
 unsigned long long render_counter = -1;
 
@@ -156,7 +157,6 @@ void renderMeshFractal(
 				int depthLimit,
 				float scale = 1.0,
 				float3 distanceOffset = {0, 0, 0}) {
-  render_counter += 1;
 	// Start by rendering the mesh at this depth
   if((uint32_t)cur_rank == (render_counter % num_processors)) {
     for (unsigned int i = 0; i < meshes.size(); i++) {
@@ -166,6 +166,7 @@ void renderMeshFractal(
       rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
     }
   }
+  render_counter += 1;
 
 	// Check whether we've reached the recursive depth of the fractal we want to reach
 	depthLimit--;
@@ -236,13 +237,32 @@ std::vector<unsigned char> rasterise(std::vector<Mesh> &meshes, unsigned int wid
 	float3 boundingBoxDimensions = boundingBoxMax - boundingBoxMin;
 	float largestBoundingBoxSide = std::max(std::max(boundingBoxDimensions.x, boundingBoxDimensions.y), boundingBoxDimensions.z);
 
-
 	renderMeshFractal(meshes, transformedMeshes, width, height, frameBuffer, depthBuffer, largestBoundingBoxSide, depthLimit);//depthLimit);
 
+  // Task 2b starts here
+
+  unsigned int bufferSize= height*width;
+  std::vector<float> outputDepthBuffer;
+  outputDepthBuffer.resize(bufferSize);
+
+  MPI_Barrier(MPI_COMM_WORLD);
+  MPI_Allreduce(&(depthBuffer.at(0)), &(outputDepthBuffer.at(0)), bufferSize, MPI_FLOAT, MPI_MIN, MPI_COMM_WORLD);
+
+  std::vector<char> myFrameBuffer;
+  myFrameBuffer.resize(width * height * 4, 0);
+
+  for(unsigned int i = 0; i < bufferSize; i++) {
+    if(depthBuffer.at(i) == outputDepthBuffer.at(i)) {
+      myFrameBuffer.at(i*4+0) = frameBuffer.at(i*4+0);
+      myFrameBuffer.at(i*4+1) = frameBuffer.at(i*4+1);
+      myFrameBuffer.at(i*4+2) = frameBuffer.at(i*4+2);
+      myFrameBuffer.at(i*4+3) = frameBuffer.at(i*4+3);
+    }
+  }
+
+  MPI_Reduce(&(myFrameBuffer.at(0)), &(frameBuffer.at(0)), bufferSize*4, MPI_CHAR, MPI_BOR, 0, MPI_COMM_WORLD);
 
 	std::cout << "finished!" << std::endl;
 
 	return frameBuffer;
-
-
 }
