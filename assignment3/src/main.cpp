@@ -13,6 +13,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <thread>
 
 static std::vector<std::pair<double,rgb>> colourGradient = {
 	{ 0.0		, { 0  , 0  , 0   } },
@@ -265,6 +266,19 @@ void worker(void) {
 	// Currently I'm doing nothing
 }
 
+void threadedRenderRectangle(std::vector<std::vector<int>> *dwellBuffer,
+                             std::complex<double> cmin,
+                             std::complex<double> dc,
+                             unsigned int square_size,
+                             unsigned int col_start,
+                             unsigned int num_rects,
+                             unsigned int rest
+                             ) {
+  for(unsigned int j = 0; j < num_rects; j++) {
+    threadedComputeBlock(*dwellBuffer, cmin, dc, j*square_size, col_start, square_size+rest, 0);
+  }
+}
+
 int main( int argc, char *argv[] )
 {
 	std::string output = "output.png";
@@ -362,7 +376,32 @@ int main( int argc, char *argv[] )
 		marianiSilver(dwellBuffer, cmin, dc, 0, 0, correctedBlockSize);
 	} else {
 		// Traditional Mandelbrot-Set computation or the 'Escape Time' algorithm
-		computeBlock(dwellBuffer, cmin, dc, 0, 0, res, 0);
+    // We partition the work into one part per machine supported thread
+    unsigned int sup_threads = std::thread::hardware_concurrency();
+    unsigned int rest = res % sup_threads;
+    unsigned int square_size = (res-rest)/sup_threads;
+
+    // Create a number of threads equal to sup_threads
+    std::vector<std::thread> threads;
+
+    // Each thread renders a strip of rectangles
+    for(unsigned int i = 0; i < sup_threads; i++) {
+      threads.push_back(std::thread
+                        (threadedRenderRectangle,
+                         &dwellBuffer,
+                         cmin,
+                         dc,
+                         square_size,
+                         square_size*i,
+                         sup_threads,
+                         rest)
+                         );
+                        }
+
+        for(unsigned int i = 0; i < threads.size(); i++) {
+          threads.at(i).join();
+        }
+
 		if (mark)
 			markBorder(dwellBuffer, dwellCompute, 0, 0, res);
 	}
