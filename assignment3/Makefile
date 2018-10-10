@@ -41,20 +41,14 @@ INCLUDES := $(addprefix -I,$(INCLUDE_DIRS))
 
 help:
 	@echo "TDT4200 Assignment 3"
-	@echo ""
-	@echo "Targets:"
-	@echo "	all 		Builds $(BINARY)"
-	@echo "	call		executes $(BINARY)"
-	@echo "	clean		cleans up everything"
-	@echo "	time		exeuction time"
-	@echo "	gprof		gprof svg callgraph"
-	@echo "	cachegrind	valgrind cachegrind using kcachegrind"
-	@echo "	callgrind	valgrind callgrind using kcachegrind"
+
+	@echo "TDT4200 Assignment 2"
 	@echo "	mandelnav	executes mandelnav with xviewer"
 	@echo ""
 	@echo "Options:"
 	@echo "	FLAGS=$(FLAGS)"
 	@echo "	OPTIMIZATION=$(OPTIMIZATION)"
+
 	@echo "	RES=$(RES)"
 	@echo "	X=$(X)"
 	@echo "	Y=$(Y)"

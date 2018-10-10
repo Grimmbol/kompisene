@@ -205,12 +205,11 @@ void fillBlock(std::vector<std::vector<int>> &dwellBuffer,
 // define job data type here
 
 typedef struct job {
-   std::vector<std::vector<int>> &dwellBuffer;
-   std::complex<double> &cmin;
-   std::complex<double> &dc;
-   unsigned int const atY;
-   unsigned int const atX;
-   unsigned int const blockSize;
+  std::vector<std::vector<int>> &dwellBuffer;
+  std::complex<double> &cmin;
+  std::complex<double> &dc;   unsigned int const atY;
+  unsigned int const atX;
+  unsigned int const blockSize;
 } job;
 
 // define mutex, condition variable and deque here

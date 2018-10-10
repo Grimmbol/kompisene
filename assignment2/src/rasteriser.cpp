@@ -159,6 +159,7 @@ void renderMeshFractal(
 				float3 distanceOffset = {0, 0, 0}) {
 	// Start by rendering the mesh at this depth
   if((uint32_t)cur_rank == (render_counter % num_processors)) {
+    printf("%d renders mesh no %llu\n", cur_rank, render_counter);
     for (unsigned int i = 0; i < meshes.size(); i++) {
       Mesh &mesh = meshes.at(i);
       Mesh &transformedMesh = transformedMeshes.at(i);
@@ -261,7 +262,6 @@ std::vector<unsigned char> rasterise(std::vector<Mesh> &meshes, unsigned int wid
   }
 
   MPI_Reduce(&(myFrameBuffer.at(0)), &(frameBuffer.at(0)), bufferSize*4, MPI_CHAR, MPI_BOR, 0, MPI_COMM_WORLD);
-
 	std::cout << "finished!" << std::endl;
 
 	return frameBuffer;
