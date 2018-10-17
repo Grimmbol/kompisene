@@ -144,10 +144,13 @@ int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
 
   std::vector<std::thread> threads;
 
-  /*for(unsigned int s = 0; s < 4; s++) {
+  commonDwellAtomic.store(-1);
+  done.store(-1);
+  for(unsigned int s = 0; s < 4; s++) {
     threads.push_back(std::thread (singleBorder, &dwellBuffer,
-                                   &cmin, &dc, atX, atY, blockSize,
+                                   &cmin, &dc,
                                    &commonDwellAtomic, &done,
+                                   atY, atX, blockSize,
                                    s, xMax, yMax));
                                    }
 
@@ -160,18 +163,16 @@ int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
       }
       return -1;
     }
-    }*/
-
-  commonDwellAtomic.store(-1);
-  done.store(-1);
+  }
+  /*
   for(unsigned int s = 0; s < 4; s++) {
     singleBorder(&dwellBuffer,
                  &cmin, &dc,
                  &commonDwellAtomic, &done,
-                 atX, atY, blockSize,
+                 atY, atX, blockSize,
                  s, xMax, yMax);
     if(done.load() == 0) return -1;
-  }
+    }*/
 
   return commonDwellAtomic.load();
 
@@ -494,7 +495,6 @@ int main( int argc, char *argv[] )
 	}
 
 	// Add here the worker for Task 2
-
 	// The colour iterations defines how often the colour gradient will
 	// be seen on the final picture. Basically the repetitive factor
 	createColourMap(maxDwell / colourIterations);
