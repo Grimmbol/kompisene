@@ -222,40 +222,30 @@ void addWork(job job)
 	 queue.push_back(job);
 }
 
-std::atomic<int> count;
-std::atomic<int> maxThreads;
-
-void marianiSilver( std::vector<std::vector<int>> *dwellBuffer,
-					std::complex<double> const *cmin,
-					std::complex<double> const *dc,
+void marianiSilver( std::vector<std::vector<int>> dwellBuffer,
+					std::complex<double> const cmin,
+					std::complex<double> const dc,
 					unsigned int const atY,
 					unsigned int const atX,
 					unsigned int const blockSize)
 {
-	int dwell = commonBorder(*dwellBuffer, *cmin, *dc, atY, atX, blockSize);
+	int dwell = commonBorder(dwellBuffer, cmin, dc, atY, atX, blockSize);
 	if ( dwell >= 0 ) {
-		fillBlock(*dwellBuffer, dwell, atY, atX, blockSize);
+		fillBlock(dwellBuffer, dwell, atY, atX, blockSize);
 		if (mark)
-			markBorder(*dwellBuffer, dwellFill, atY, atX, blockSize);
+			markBorder(dwellBuffer, dwellFill, atY, atX, blockSize);
 	} else if (blockSize <= blockDim) {
-		computeBlock(*dwellBuffer, *cmin, *dc, atY, atX, blockSize);
+		computeBlock(dwellBuffer, cmin, dc, atY, atX, blockSize);
 		if (mark)
-			markBorder(*dwellBuffer, dwellCompute, atY, atX, blockSize);
+			markBorder(dwellBuffer, dwellCompute, atY, atX, blockSize);
 	} else {
 		// Subdivision
-		std::vector<std::thread> threads;
 		unsigned int newBlockSize = blockSize / subDiv;
 		for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
 			for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
-				threads.push_back(std::thread(
-					marianiSilver, dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize));
-				count++;
-				if (count > maxThreads) maxThreads.store(count);
+				job job = {dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize};
+				addWork(job);
 			}
-		}
-		for (unsigned int i = 0; i < threads.size(); i++) {
-			threads.at(i).join();
-			count--;
 		}
 	}
 }
@@ -276,10 +266,10 @@ void help() {
 }
 
 void worker(void) {
-	while(!queue.empty()) {
+	while(!(queue.empty())) {
 		job job = queue.front();
 		queue.pop_front();
-		marianiSilver((job.dwellBuffer), (job.cmin), (job.dc), job.atY, job.atX, job.blockSize);
+		marianiSilver(job.dwellBuffer, job.cmin, job.dc, job.atY, job.atX, job.blockSize);
 	}
 }
 
@@ -377,13 +367,9 @@ int main( int argc, char *argv[] )
 		// Calculate a dividable resolution for the blockSize:
 		unsigned int const correctedBlockSize = std::pow(subDiv,numDiv) * blockDim;
 		// Mariani-Silver subdivision algorithm
-		count.store(0);
-		maxThreads.store(0);
 		//marianiSilver(&dwellBuffer, &cmin, &dc, 0, 0, correctedBlockSize);
 		job job = {dwellBuffer, cmin, dc, 0, 0, correctedBlockSize};
 		addWork(job);
-		std::cout << "Final value: " << count << std::endl;
-		std::cout << "Maximum number of threads: " << maxThreads << std::endl;
 	} else {
 		// Traditional Mandelbrot-Set computation or the 'Escape Time' algorithm
 		computeBlock(dwellBuffer, cmin, dc, 0, 0, res, 0);
