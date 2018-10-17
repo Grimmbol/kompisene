@@ -101,17 +101,105 @@ unsigned int pixelDwell(std::complex<double> const &cmin,
 	return dwell;
 }
 
+void singleBorder(std::vector<std::vector<int>> *dwellBuffer,
+                  std::complex<double> const *cmin,
+                  std::complex<double> const *dc,
+                  std::atomic<int> *commonDwellAtomic,
+                  std::atomic<int> *done,
+                  unsigned int const atY,
+                  unsigned int const atX,
+                  unsigned int const blockSize,
+                  unsigned int s,
+                  unsigned int const xMax,
+                  unsigned int const yMax) {
+  for (unsigned int i = 0; i < blockSize; i++) {
+    unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
+    unsigned const int x = s % 2 != 0 ? atX + i : (s == 0 ? xMax : atX);
+    if (y < res && x < res) {
+      if (dwellBuffer->at(y).at(x) < 0) {
+        dwellBuffer->at(y).at(x) = pixelDwell(*cmin, *dc, y, x);
+      }
+      if (commonDwellAtomic->load() == -1) {
+        commonDwellAtomic->store(dwellBuffer->at(y).at(x));
+      } else if (commonDwellAtomic->load() != dwellBuffer->at(y).at(x)) {
+        done->store(0);
+        return;
+      }
+    }
+  }
+}
+
 int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
-				 std::complex<double> const &cmin,
-				 std::complex<double> const &dc,
-				 unsigned int const atY,
-				 unsigned int const atX,
-				 unsigned int const blockSize)
+                 std::complex<double> const &cmin,
+                 std::complex<double> const &dc,
+                 unsigned int const atY,
+                 unsigned int const atX,
+                 unsigned int const blockSize)
 {
 	unsigned int const yMax = (res > atY + blockSize - 1) ? atY + blockSize - 1 : res - 1;
 	unsigned int const xMax = (res > atX + blockSize - 1) ? atX + blockSize - 1 : res - 1;
-	int commonDwell = -1;
-	for (unsigned int i = 0; i < blockSize; i++) {
+	//int commonDwell = -1;
+  std::atomic<int> commonDwellAtomic;
+  std::atomic<int> done; // -1 means not done, 0 means done
+
+  std::vector<std::thread> threads;
+
+  /*for(unsigned int s = 0; s < 4; s++) {
+    threads.push_back(std::thread (singleBorder, &dwellBuffer,
+                                   &cmin, &dc, atX, atY, blockSize,
+                                   &commonDwellAtomic, &done,
+                                   s, xMax, yMax));
+                                   }
+
+  // Wait for threads to join
+  for(unsigned int i = 0; i < threads.size(); i++) {
+    threads.at(i).join();
+    if(done.load() == 0) {
+      for(unsigned int j = i+1; j < threads.size(); j++) {
+        threads.at(j).join();
+      }
+      return -1;
+    }
+    }*/
+
+  commonDwellAtomic.store(-1);
+  done.store(-1);
+  for(unsigned int s = 0; s < 4; s++) {
+    singleBorder(&dwellBuffer,
+                 &cmin, &dc,
+                 &commonDwellAtomic, &done,
+                 atX, atY, blockSize,
+                 s, xMax, yMax);
+    if(done.load() == 0) return -1;
+  }
+
+  return commonDwellAtomic.load();
+
+  /*
+  std::vector<std::vector<int>> *dwellBufferPointer = &dwellBuffer;//We try to use a pointer
+  std::complex<double> const *cminp = &cmin;
+  std::complex<double> const *dcp = &dc;
+
+  for (unsigned int s = 0; s < 4; s++) {
+    for (unsigned int i = 0; i < blockSize; i++) {
+      unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
+      unsigned const int x = s % 2 != 0 ? atX + i : (s == 0 ? xMax : atX);
+      if(done.load() == 0) goto done; //This should be equivalent to returning
+      if (y < res && x < res) {
+        if (dwellBufferPointer->at(y).at(x) < 0) {
+          dwellBufferPointer->at(y).at(x) = pixelDwell(*cminp, *dcp, y, x);
+        }
+        if (commonDwellAtomic.load() == -1) {
+          commonDwellAtomic.store(dwellBufferPointer->at(y).at(x));
+        } else if (commonDwellAtomic.load() != dwellBufferPointer->at(y).at(x)) {
+          done.store(0);//return -1;
+          goto done; //This should be equivalent to returning
+        }
+      }
+		}
+    }
+    done:*/
+  /*for (unsigned int i = 0; i < blockSize; i++) {
 		for (unsigned int s = 0; s < 4; s++) {
 			unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
 			unsigned const int x = s % 2 != 0 ? atX + i : (s == 0 ? xMax : atX);
@@ -119,15 +207,14 @@ int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
 				if (dwellBuffer.at(y).at(x) < 0) {
 					dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
 				}
-				if (commonDwell == -1) {
-					commonDwell = dwellBuffer.at(y).at(x);
-				} else if (commonDwell != dwellBuffer.at(y).at(x)) {
+				if (commonDwellAtomic.load() == -1) {
+					commonDwellAtomic.store(dwellBuffer.at(y).at(x));
+				} else if (commonDwellAtomic.load() != dwellBuffer.at(y).at(x)) {
 					return -1;
 				}
 			}
 		}
-	}
-	return commonDwell;
+    }*/
 }
 
 void markBorder(std::vector<std::vector<int>> &dwellBuffer,
@@ -398,9 +485,9 @@ int main( int argc, char *argv[] )
                          );
                         }
 
-        for(unsigned int i = 0; i < threads.size(); i++) {
-          threads.at(i).join();
-        }
+    for(unsigned int i = 0; i < threads.size(); i++) {
+      threads.at(i).join();
+    }
 
 		if (mark)
 			markBorder(dwellBuffer, dwellCompute, 0, 0, res);
