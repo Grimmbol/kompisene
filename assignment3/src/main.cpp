@@ -216,16 +216,17 @@ typedef struct job {
 
 // define mutex, condition variable and deque here
 std::deque<job> queue;
-std::condition_variable block;
+std::condition_variable cv;
 std::mutex mutex;
+bool isEmpty;
+std::atomic<int> count;
 
 void addWork(job job)
 {
-	//std::unique_lock<std::mutex> lock(mutex);
 	mutex.lock();
 	queue.push_back(job);
 	mutex.unlock();
-	block.notify_one();
+	cv.notify_one();
 }
 
 void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
@@ -271,14 +272,28 @@ void help() {
 	std::cout << "\t" << "-t" << "\t" << "traditional computation (no Mariani-Silver)" << std::endl;
 }
 
-void worker(void) {
+bool isQueueEmpty(){
+	mutex.lock();
+	bool isEmpty;
+	isEmpty = queue.empty();
+	mutex.unlock();
+	return isEmpty;
+}
 
-	while(!(queue.empty())) {
+void worker(void) {
+	isEmpty = false;
+	while((count.load() > 0) || (!isEmpty)) {
 		mutex.lock();
 		job job = queue.front();
 		queue.pop_front();
 		mutex.unlock();
+		cv.notify_one();
+
+		count++;
 		marianiSilver(job.dwellBuffer, job.cmin, job.dc, job.atY, job.atX, job.blockSize);
+		count--;
+
+		isEmpty = isQueueEmpty();
 	}
 }
 
@@ -387,6 +402,7 @@ int main( int argc, char *argv[] )
 	}
 
 	// Add here the worker for Task
+	count.store(0);
 	std::vector<std::thread> threads;
 	for (unsigned int i = 0; i < std::thread::hardware_concurrency(); i++) {
 		threads.push_back(std::thread(worker));
