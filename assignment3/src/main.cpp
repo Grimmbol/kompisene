@@ -13,6 +13,7 @@
 #include <mutex>
 #include <atomic>
 #include <condition_variable>
+#include <thread>
 
 static std::vector<std::pair<double,rgb>> colourGradient = {
 	{ 0.0		, { 0  , 0  , 0   } },
@@ -206,17 +207,25 @@ void fillBlock(std::vector<std::vector<int>> &dwellBuffer,
 
 typedef struct job {
   std::vector<std::vector<int>> &dwellBuffer;
-  std::complex<double> &cmin;
-  std::complex<double> &dc;   unsigned int const atY;
+  const std::complex<double> &cmin;
+  const std::complex<double> &dc;
+	unsigned int const atY;
   unsigned int const atX;
   unsigned int const blockSize;
 } job;
 
 // define mutex, condition variable and deque here
+std::deque<job> queue;
+std::condition_variable block;
+std::mutex mutex;
 
-void addWork(/* parameters */)
+void addWork(job job)
 {
-
+	//std::unique_lock<std::mutex> lock(mutex);
+	mutex.lock();
+	queue.push_back(job);
+	mutex.unlock();
+	block.notify_one();
 }
 
 void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
@@ -240,7 +249,8 @@ void marianiSilver( std::vector<std::vector<int>> &dwellBuffer,
 		unsigned int newBlockSize = blockSize / subDiv;
 		for (unsigned int ydiv = 0; ydiv < subDiv; ydiv++) {
 			for (unsigned int xdiv = 0; xdiv < subDiv; xdiv++) {
-				marianiSilver(dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize);
+				job job = {dwellBuffer, cmin, dc, atY + (ydiv * newBlockSize), atX + (xdiv * newBlockSize), newBlockSize};
+				addWork(job);
 			}
 		}
 	}
@@ -262,7 +272,14 @@ void help() {
 }
 
 void worker(void) {
-	// Currently I'm doing nothing
+
+	while(!(queue.empty())) {
+		mutex.lock();
+		job job = queue.front();
+		queue.pop_front();
+		mutex.unlock();
+		marianiSilver(job.dwellBuffer, job.cmin, job.dc, job.atY, job.atX, job.blockSize);
+	}
 }
 
 int main( int argc, char *argv[] )
@@ -359,7 +376,9 @@ int main( int argc, char *argv[] )
 		// Calculate a dividable resolution for the blockSize:
 		unsigned int const correctedBlockSize = std::pow(subDiv,numDiv) * blockDim;
 		// Mariani-Silver subdivision algorithm
-		marianiSilver(dwellBuffer, cmin, dc, 0, 0, correctedBlockSize);
+		//marianiSilver(dwellBuffer, cmin, dc, 0, 0, correctedBlockSize);
+		job job = {dwellBuffer, cmin, dc, 0, 0, correctedBlockSize};
+		addWork(job);
 	} else {
 		// Traditional Mandelbrot-Set computation or the 'Escape Time' algorithm
 		computeBlock(dwellBuffer, cmin, dc, 0, 0, res, 0);
@@ -367,7 +386,15 @@ int main( int argc, char *argv[] )
 			markBorder(dwellBuffer, dwellCompute, 0, 0, res);
 	}
 
-	// Add here the worker for Task 2
+	// Add here the worker for Task
+	std::vector<std::thread> threads;
+	for (unsigned int i = 0; i < std::thread::hardware_concurrency(); i++) {
+		threads.push_back(std::thread(worker));
+	}
+
+	for (unsigned int i = 0; i < std::thread::hardware_concurrency(); i++) {
+		threads.at(i).join();
+	}
 
 	// The colour iterations defines how often the colour gradient will
 	// be seen on the final picture. Basically the repetitive factor
@@ -396,4 +423,3 @@ int main( int argc, char *argv[] )
 
 	return 0;
 }
-
