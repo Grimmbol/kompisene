@@ -138,7 +138,6 @@ int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
 {
 	unsigned int const yMax = (res > atY + blockSize - 1) ? atY + blockSize - 1 : res - 1;
 	unsigned int const xMax = (res > atX + blockSize - 1) ? atX + blockSize - 1 : res - 1;
-	//int commonDwell = -1;
   std::atomic<int> commonDwellAtomic;
   std::atomic<int> done; // -1 means not done, 0 means done
 
@@ -164,58 +163,8 @@ int commonBorder(std::vector<std::vector<int>> &dwellBuffer,
       return -1;
     }
   }
-  /*
-  for(unsigned int s = 0; s < 4; s++) {
-    singleBorder(&dwellBuffer,
-                 &cmin, &dc,
-                 &commonDwellAtomic, &done,
-                 atY, atX, blockSize,
-                 s, xMax, yMax);
-    if(done.load() == 0) return -1;
-    }*/
 
   return commonDwellAtomic.load();
-
-  /*
-  std::vector<std::vector<int>> *dwellBufferPointer = &dwellBuffer;//We try to use a pointer
-  std::complex<double> const *cminp = &cmin;
-  std::complex<double> const *dcp = &dc;
-
-  for (unsigned int s = 0; s < 4; s++) {
-    for (unsigned int i = 0; i < blockSize; i++) {
-      unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
-      unsigned const int x = s % 2 != 0 ? atX + i : (s == 0 ? xMax : atX);
-      if(done.load() == 0) goto done; //This should be equivalent to returning
-      if (y < res && x < res) {
-        if (dwellBufferPointer->at(y).at(x) < 0) {
-          dwellBufferPointer->at(y).at(x) = pixelDwell(*cminp, *dcp, y, x);
-        }
-        if (commonDwellAtomic.load() == -1) {
-          commonDwellAtomic.store(dwellBufferPointer->at(y).at(x));
-        } else if (commonDwellAtomic.load() != dwellBufferPointer->at(y).at(x)) {
-          done.store(0);//return -1;
-          goto done; //This should be equivalent to returning
-        }
-      }
-		}
-    }
-    done:*/
-  /*for (unsigned int i = 0; i < blockSize; i++) {
-		for (unsigned int s = 0; s < 4; s++) {
-			unsigned const int y = s % 2 == 0 ? atY + i : (s == 1 ? yMax : atY);
-			unsigned const int x = s % 2 != 0 ? atX + i : (s == 0 ? xMax : atX);
-			if (y < res && x < res) {
-				if (dwellBuffer.at(y).at(x) < 0) {
-					dwellBuffer.at(y).at(x) = pixelDwell(cmin, dc, y, x);
-				}
-				if (commonDwellAtomic.load() == -1) {
-					commonDwellAtomic.store(dwellBuffer.at(y).at(x));
-				} else if (commonDwellAtomic.load() != dwellBuffer.at(y).at(x)) {
-					return -1;
-				}
-			}
-		}
-    }*/
 }
 
 void markBorder(std::vector<std::vector<int>> &dwellBuffer,
