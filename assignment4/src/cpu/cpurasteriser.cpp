@@ -7,6 +7,8 @@
 #include "utilities/OBJLoader.hpp"
 #include "utilities/floats.hpp"
 #include "utilities/geometry.hpp"
+#include <thread>
+#include <omp.h>
 
 const std::vector<globalLight> lightSources = { {{0.3f, 0.5f, 1.0f}, {1.0f, 1.0f, 1.0f}} };
 
@@ -130,10 +132,10 @@ inline void rasteriseTriangles( Mesh &transformedMesh,
 				float u, v, w;
 				if(face.inRange(x,y,u,v,w)){
 					float pixelDepth = face.getDepth(u,v,w);
-					if( pixelDepth >= -1 && pixelDepth <= 1 && pixelDepth < depthBuffer.at(y * width + x)) {
-						depthBuffer.at(y * width + x) = pixelDepth;
-						runFragmentShader(frameBuffer, x + (width * y), face, float3(u,v,w));
-					}
+          if( pixelDepth >= -1 && pixelDepth <= 1 && pixelDepth < depthBuffer.at(y * width + x)) {
+            depthBuffer.at(y * width + x) = pixelDepth;
+            runFragmentShader(frameBuffer, x + (width * y), face, float3(u,v,w));
+          }
 				}
 			}
 		}
@@ -196,8 +198,8 @@ std::vector<unsigned char> rasteriseCPU(std::string inputFile, unsigned int widt
 	// We first need to allocate some buffers.
 	// The framebuffer contains the image being rendered.
 	std::vector<unsigned char> frameBuffer;
-	// The depth buffer is used to make sure that objects closer to the camera occlude/obscure objects that are behind it
-	std::vector<float> depthBuffer;
+	// The depth buffer is used tocurrentVertex make sure that objects closer to the camera occlude/obscure objects that are behind it
+  std::vector<float> depthBuffer;
 	frameBuffer.resize(width * height * 4, 0);
 	for (unsigned int i = 3; i < (4 * width * height); i+=4) {
 		frameBuffer.at(i) = 255;
@@ -208,7 +210,6 @@ std::vector<unsigned char> rasteriseCPU(std::string inputFile, unsigned int widt
 	float3 boundingBoxMax(std::numeric_limits<float>::min());
 
 	std::cout << "Rendering image... " << std::flush;
-
 	std::vector<Mesh> transformedMeshes;
 	for(unsigned int i = 0; i < meshes.size(); i++) {
 		transformedMeshes.push_back(meshes.at(i).clone());
@@ -241,18 +242,31 @@ std::vector<unsigned char> rasteriseCPU(std::string inputFile, unsigned int widt
 
 	fillWorkQueue(workQueue, largestBoundingBoxSide, depthLimit);
 
-    for(unsigned int item = 0; item < totalItemsToRender; item++) {
+    auto start = std::chrono::high_resolution_clock::now();
+#   pragma omp parallel
+    {
+      std::vector<Mesh> private_trans_meshes;
+      for( unsigned int j = 0; j < meshes.size(); j++) {
+        private_trans_meshes.push_back(meshes.at(j).clone());
+      }
+#     pragma omp for schedule(guided, 1)
+      for(unsigned int item = 0; item < totalItemsToRender; item++) {
         if(item % 10000 == 0) {
             std::cout << item << "/" << totalItemsToRender << " complete." << std::endl;
         }
         workItemCPU objectToRender = workQueue.at(item);
         for (unsigned int i = 0; i < meshes.size(); i++) {
-            Mesh &mesh = meshes.at(i);
-            Mesh &transformedMesh = transformedMeshes.at(i);
-            runVertexShader(mesh, transformedMesh, objectToRender.distanceOffset, objectToRender.scale, width, height);
-            rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
+          Mesh &mesh = meshes.at(i);
+          Mesh &transformedMesh = private_trans_meshes.at(i);
+          runVertexShader(mesh, transformedMesh, objectToRender.distanceOffset, objectToRender.scale, width, height);
+          rasteriseTriangles(transformedMesh, frameBuffer, depthBuffer, width, height);
         }
+      }
     }
+    auto end = std::chrono::high_resolution_clock::now();
+    unsigned int loop_time = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+    std::cout << "Time in loop: " << loop_time << std::endl;
+
 
 	std::cout << "Finished!" << std::endl;
 
