@@ -9,10 +9,10 @@
 #include "cuda_runtime.h"
 #include "utilities/cuda_error_helper.hpp"
 
-int count = 0;
-std::chrono::high_resolution_clock::time_point start;
-std::chrono::high_resolution_clock::time_point end;
-int time_taken = 0;
+int counts = [0, 0, 0, 0, 0, 0];
+std::chrono::high_resolution_clock::time_point starts[6];
+std::chrono::high_resolution_clock::time_point ends[6];
+int times_taken = [0, 0, 0, 0, 0, 0];
 // UTILITY FUNCTIONS HAVE BEEN MOVED INTO THE KERNEL SOURCE FILE ITSELF
 // CUDA relocatable and separable compilation is possible, but due to the many possible
 // problems it can cause on different platforms, I decided to take the safe route instead
