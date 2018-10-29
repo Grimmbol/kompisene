@@ -361,6 +361,14 @@ void fillWorkQueue(
 
 }
 
+__global__
+void fillBuffer(void *dev_ptr) {
+		 int i = blockDim.x * blockIdx.x + threadIdx.x;
+		 if (i < width*height) {
+			 		
+		 }
+}
+
 // This function kicks off the rasterisation process.
 std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int width, unsigned int height, unsigned int depthLimit) {
     std::cout << "Rendering an image on the GPU.." << std::endl;
@@ -405,7 +413,7 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
 	int* depthBuffer = new int[width * height];
 	for(unsigned int i = 0; i < width * height; i++) {
     	depthBuffer[i] = 16777216; // = 2 ^ 24
-    }
+  }
 
     float3 boundingBoxMin = make_float3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
     float3 boundingBoxMax = make_float3(std::numeric_limits<float>::min(), std::numeric_limits<float>::min(), std::numeric_limits<float>::min());
