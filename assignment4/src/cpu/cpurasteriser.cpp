@@ -248,7 +248,7 @@ std::vector<unsigned char> rasteriseCPU(std::string inputFile, unsigned int widt
     for( unsigned int j = 0; j < meshes.size(); j++) {
       private_trans_meshes.push_back(meshes.at(j).clone());
     }
-#   pragma omp for schedule(guided, 1)
+#   pragma omp for schedule(guided)
     for(unsigned int item = 0; item < totalItemsToRender; item++) {
       if(item % 10000 == 0) {
           std::cout << item << "/" << totalItemsToRender << " complete." << std::endl;

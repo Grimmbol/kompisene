@@ -39,7 +39,7 @@ __host__ __device__ float3 normalizeGPU(float3 v)
 // Utility function if you'd like to convert the depth buffer to an integer format.
 __host__ __device__ int depthFloatToInt(float value) {
 	value = (value + 1.0f) * 0.5f;
-    return static_cast<int>(static_cast<double>(value) * static_cast<double>(16777216)); 
+    return static_cast<int>(static_cast<double>(value) * static_cast<double>(16777216));
 }
 
 __host__ __device__ bool isPointInTriangle(
@@ -195,7 +195,7 @@ void runFragmentShader( unsigned char* frameBuffer,
 
 	for (unsigned int lightSource = 0; lightSource < lightSourceCount; lightSource++) {
 		globalLight l = lightSources[lightSource];
-		float lightNormalDotProduct = 
+		float lightNormalDotProduct =
 			normal.x * l.direction.x + normal.y * l.direction.y + normal.z * l.direction.z;
 
 		float3 diffuseReflectionColour;
@@ -267,7 +267,7 @@ void rasteriseTriangle( float4 &v0, float4 &v1, float4 &v2,
 					    // If it is, we update the depth buffer to the new depth.
 					    depthBuffer[y * width + x] = pixelDepthConverted;
 
-					    // And finally we determine the colour of the pixel, now that 
+					    // And finally we determine the colour of the pixel, now that
 					    // we know our pixel is the closest we have seen thus far.
 						runFragmentShader(frameBuffer, x + (width * y), mesh, triangleIndex, make_float3(u, v, w));
 					}
@@ -289,22 +289,31 @@ void renderMeshes(
         int* depthBuffer
 ) {
 
+		int loop_time = 0;
+		std::chrono::high_resolution_clock::time_point start;
+		std::chrono::high_resolution_clock::time_point end;
     for(unsigned int item = 0; item < totalItemsToRender; item++) {
         workItemGPU objectToRender = workQueue[item];
         for (unsigned int meshIndex = 0; meshIndex < meshCount; meshIndex++) {
-            for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
-                float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
-                float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
-                float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
+	          for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
+								start = std::chrono::high_resolution_clock::now();
+	              float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
+	              float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
+	              float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
 
-                runVertexShader(v0, objectToRender.distanceOffset, objectToRender.scale, width, height);
-                runVertexShader(v1, objectToRender.distanceOffset, objectToRender.scale, width, height);
-                runVertexShader(v2, objectToRender.distanceOffset, objectToRender.scale, width, height);
+	              runVertexShader(v0, objectToRender.distanceOffset, objectToRender.scale, width, height);
+	              runVertexShader(v1, objectToRender.distanceOffset, objectToRender.scale, width, height);
+	              runVertexShader(v2, objectToRender.distanceOffset, objectToRender.scale, width, height);
 
-                rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
-            }
+	              rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
+								end = std::chrono::high_resolution_clock::now();
+								loop_time += std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+
+	          }
         }
     }
+		std::cout << (((float)loop_time)/((float)meshCount))/((float)totalItemsToRender) << std::endl;
+		std::cout << "MeshCount: " << meshCount << std::endl;
 }
 
 
@@ -369,6 +378,24 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
 		frameBuffer[i + 2] = 0;
 		frameBuffer[i + 3] = 255;
 	}
+
+	int count = 0;
+	checkCudaErrors(cudaGetDeviceCount(&count));
+	std::cout << count << std::endl;
+
+	if (count < 1) {
+		std::cout << "No GPU's detected!" << std::endl;
+	}
+
+	std::vector<cudaDeviceProp*> prop_list;
+	for (int i = 0; i < count; i++) {
+		cudaDeviceProp* prop = new cudaDeviceProp; //Remember to delete heap allocated memory
+		checkCudaErrors(cudaGetDeviceProperties(prop, i));
+		std::cout << prop->name << std::endl;
+		prop_list.push_back(prop);
+	}
+
+	checkCudaErrors(cudaSetDevice(0));
 
 	int* depthBuffer = new int[width * height];
 	for(unsigned int i = 0; i < width * height; i++) {
