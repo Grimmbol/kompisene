@@ -9,10 +9,11 @@
 #include "cuda_runtime.h"
 #include "utilities/cuda_error_helper.hpp"
 
-int counts = [0, 0, 0, 0, 0, 0];
+int counts[6] = { };
 std::chrono::high_resolution_clock::time_point starts[6];
 std::chrono::high_resolution_clock::time_point ends[6];
-int times_taken = [0, 0, 0, 0, 0, 0];
+int times_taken[6] = { };
+
 // UTILITY FUNCTIONS HAVE BEEN MOVED INTO THE KERNEL SOURCE FILE ITSELF
 // CUDA relocatable and separable compilation is possible, but due to the many possible
 // problems it can cause on different platforms, I decided to take the safe route instead
@@ -196,7 +197,9 @@ void runFragmentShader( unsigned char* frameBuffer,
     const unsigned int lightSourceCount = 1;
     const globalLight lightSources[lightSourceCount] = {{make_float3(0.3f, 0.5f, 1.0f), make_float3(1.0f, 1.0f, 1.0f)}};
 
+		starts[5] = std::chrono::system_clock::now();
 		for (unsigned int lightSource = 0; lightSource < lightSourceCount; lightSource++) {
+			counts[5]++;
 				globalLight l = lightSources[lightSource];
 				float lightNormalDotProduct =
 					normal.x * l.direction.x + normal.y * l.direction.y + normal.z * l.direction.z;
@@ -210,6 +213,8 @@ void runFragmentShader( unsigned char* frameBuffer,
 				colour.y += diffuseReflectionColour.y * lightNormalDotProduct;
 				colour.z += diffuseReflectionColour.z * lightNormalDotProduct;
 		}
+		ends[5] = std::chrono::system_clock::now();
+		times_taken[5] += std::chrono::duration_cast<std::chrono::microseconds>(ends[5]-starts[5]).count();
 
     colour.x = fminf(fmaxf(colour.x, 0.0f), 1.0f);
     colour.y = fminf(fmaxf(colour.y, 0.0f), 1.0f);
@@ -254,8 +259,12 @@ void rasteriseTriangle( float4 &v0, float4 &v1, float4 &v2,
 		maxy = fminf(maxy, height);
 
 		// We iterate over each pixel in the triangle's bounding box
+		starts[3] = std::chrono::system_clock::now();
 		for (unsigned int x = minx; x < maxx; x++) {
+				counts[3]++;
+				starts[4] = std::chrono::system_clock::now();
 				for (unsigned int y = miny; y < maxy; y++) {
+						counts[4]++;
 						float u, v, w;
 						// For each point in the bounding box, determine whether that point lies inside the triangle
 						if (isPointInTriangle(v0, v1, v2, x, y, u, v, w)) {
@@ -277,7 +286,11 @@ void rasteriseTriangle( float4 &v0, float4 &v1, float4 &v2,
 								}
 						}
 				}
+				ends[4] = std::chrono::system_clock::now();
+				times_taken[4] += std::chrono::duration_cast<std::chrono::microseconds>(ends[4]-starts[4]).count();
 		}
+		ends[3] = std::chrono::system_clock::now();
+		times_taken[3] += std::chrono::duration_cast<std::chrono::microseconds>(ends[3]-starts[3]).count();
 }
 
 
@@ -292,12 +305,16 @@ void renderMeshes(
         int* depthBuffer
 ) {
 
+		starts[0] = std::chrono::system_clock::now();
     for(unsigned int item = 0; item < totalItemsToRender; item++) {
+				counts[0]++;
         workItemGPU objectToRender = workQueue[item];
+				starts[1] = std::chrono::system_clock::now();
         for (unsigned int meshIndex = 0; meshIndex < meshCount; meshIndex++) {
-						start = std::chrono::system_clock::now();
+						counts[1]++;
+						starts[2] = std::chrono::system_clock::now();
             for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
-								count++;
+								counts[2]++;
                 float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
                 float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
                 float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
@@ -308,12 +325,19 @@ void renderMeshes(
 
                 rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
             }
-						end = std::chrono::system_clock::now();
-						time_taken += std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
+						ends[2] = std::chrono::system_clock::now();
+						times_taken[2] += std::chrono::duration_cast<std::chrono::microseconds>(ends[2]-starts[2]).count();
         }
+				ends[1] = std::chrono::system_clock::now();
+				times_taken[1] += std::chrono::duration_cast<std::chrono::microseconds>(ends[1]-starts[1]).count();
     }
-		std::cout << "Time taken: " << time_taken << std::endl;
-		std::cout << "Number of times: " << count << std::endl;
+		ends[0] = std::chrono::system_clock::now();
+		times_taken[0] += std::chrono::duration_cast<std::chrono::microseconds>(ends[0]-starts[0]).count();
+
+		for(int i = 0; i < 6; i++) {
+			std::cout << i << ": Time taken: " << times_taken[i] << std::endl;
+			std::cout << i << ": Number of times: " << counts[i] << std::endl;
+		}
 }
 
 
