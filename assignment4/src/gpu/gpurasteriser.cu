@@ -9,7 +9,10 @@
 #include "cuda_runtime.h"
 #include "utilities/cuda_error_helper.hpp"
 
-
+int count = 0;
+std::chrono::high_resolution_clock::time_point start;
+std::chrono::high_resolution_clock::time_point end;
+int time_taken = 0;
 // UTILITY FUNCTIONS HAVE BEEN MOVED INTO THE KERNEL SOURCE FILE ITSELF
 // CUDA relocatable and separable compilation is possible, but due to the many possible
 // problems it can cause on different platforms, I decided to take the safe route instead
@@ -182,7 +185,7 @@ void runFragmentShader( unsigned char* frameBuffer,
 						unsigned int triangleIndex,
 						float3 const &weights)
 {
-	float3 normal = computeInterpolatedNormal(
+		float3 normal = computeInterpolatedNormal(
             mesh.normals[3 * triangleIndex + 0],
             mesh.normals[3 * triangleIndex + 1],
             mesh.normals[3 * triangleIndex + 2],
@@ -193,20 +196,20 @@ void runFragmentShader( unsigned char* frameBuffer,
     const unsigned int lightSourceCount = 1;
     const globalLight lightSources[lightSourceCount] = {{make_float3(0.3f, 0.5f, 1.0f), make_float3(1.0f, 1.0f, 1.0f)}};
 
-	for (unsigned int lightSource = 0; lightSource < lightSourceCount; lightSource++) {
-		globalLight l = lightSources[lightSource];
-		float lightNormalDotProduct =
-			normal.x * l.direction.x + normal.y * l.direction.y + normal.z * l.direction.z;
+		for (unsigned int lightSource = 0; lightSource < lightSourceCount; lightSource++) {
+				globalLight l = lightSources[lightSource];
+				float lightNormalDotProduct =
+					normal.x * l.direction.x + normal.y * l.direction.y + normal.z * l.direction.z;
 
-		float3 diffuseReflectionColour;
-		diffuseReflectionColour.x = mesh.objectDiffuseColour.x * l.colour.x;
-		diffuseReflectionColour.y = mesh.objectDiffuseColour.y * l.colour.y;
-		diffuseReflectionColour.z = mesh.objectDiffuseColour.z * l.colour.z;
+				float3 diffuseReflectionColour;
+				diffuseReflectionColour.x = mesh.objectDiffuseColour.x * l.colour.x;
+				diffuseReflectionColour.y = mesh.objectDiffuseColour.y * l.colour.y;
+				diffuseReflectionColour.z = mesh.objectDiffuseColour.z * l.colour.z;
 
-		colour.x += diffuseReflectionColour.x * lightNormalDotProduct;
-		colour.y += diffuseReflectionColour.y * lightNormalDotProduct;
-		colour.z += diffuseReflectionColour.z * lightNormalDotProduct;
-	}
+				colour.x += diffuseReflectionColour.x * lightNormalDotProduct;
+				colour.y += diffuseReflectionColour.y * lightNormalDotProduct;
+				colour.z += diffuseReflectionColour.z * lightNormalDotProduct;
+		}
 
     colour.x = fminf(fmaxf(colour.x, 0.0f), 1.0f);
     colour.y = fminf(fmaxf(colour.y, 0.0f), 1.0f);
@@ -235,46 +238,46 @@ void rasteriseTriangle( float4 &v0, float4 &v1, float4 &v2,
                         unsigned int const width,
                         unsigned int const height ) {
 
-    // Compute the bounding box of the triangle.
-    // Pixels that are intersecting with the triangle can only lie in this rectangle
-	unsigned int minx = unsigned(floorf(fminf(fminf(v0.x, v1.x), v2.x)));
-	unsigned int maxx = unsigned(ceilf(fmaxf(fmaxf(v0.x, v1.x), v2.x)));
-	unsigned int miny = unsigned(floorf(fminf(fminf(v0.y, v1.y), v2.y)));
-	unsigned int maxy = unsigned(ceilf(fmaxf(fmaxf(v0.y, v1.y), v2.y)));
+	    // Compute the bounding box of the triangle.
+	    // Pixels that are intersecting with the triangle can only lie in this rectangle
+		unsigned int minx = unsigned(floorf(fminf(fminf(v0.x, v1.x), v2.x)));
+		unsigned int maxx = unsigned(ceilf(fmaxf(fmaxf(v0.x, v1.x), v2.x)));
+		unsigned int miny = unsigned(floorf(fminf(fminf(v0.y, v1.y), v2.y)));
+		unsigned int maxy = unsigned(ceilf(fmaxf(fmaxf(v0.y, v1.y), v2.y)));
 
-	// Make sure the screen coordinates stay inside the window
-    // This ensures parts of the triangle that are outside the
-    // view of the camera are not drawn.
-	minx = fmaxf(minx, (unsigned int) 0);
-	maxx = fminf(maxx, width);
-	miny = fmaxf(miny, (unsigned int) 0);
-	maxy = fminf(maxy, height);
+		// Make sure the screen coordinates stay inside the window
+	    // This ensures parts of the triangle that are outside the
+	    // view of the camera are not drawn.
+		minx = fmaxf(minx, (unsigned int) 0);
+		maxx = fminf(maxx, width);
+		miny = fmaxf(miny, (unsigned int) 0);
+		maxy = fminf(maxy, height);
 
-	// We iterate over each pixel in the triangle's bounding box
-	for (unsigned int x = minx; x < maxx; x++) {
-		for (unsigned int y = miny; y < maxy; y++) {
-			float u, v, w;
-			// For each point in the bounding box, determine whether that point lies inside the triangle
-			if (isPointInTriangle(v0, v1, v2, x, y, u, v, w)) {
-				// If it does, compute the distance between that point on the triangle and the screen
-				float pixelDepth = computeDepth(v0, v1, v2, make_float3(u, v, w));
-				// If the point is closer than any point we have seen thus far, render it.
-				// Otherwise it is hidden behind another object, and we can throw it away
-				// Because it will be invisible anyway.
-                if (pixelDepth >= -1 && pixelDepth <= 1) {
-					int pixelDepthConverted = depthFloatToInt(pixelDepth);
-                 	if (pixelDepthConverted < depthBuffer[y * width + x]) {
-					    // If it is, we update the depth buffer to the new depth.
-					    depthBuffer[y * width + x] = pixelDepthConverted;
+		// We iterate over each pixel in the triangle's bounding box
+		for (unsigned int x = minx; x < maxx; x++) {
+				for (unsigned int y = miny; y < maxy; y++) {
+						float u, v, w;
+						// For each point in the bounding box, determine whether that point lies inside the triangle
+						if (isPointInTriangle(v0, v1, v2, x, y, u, v, w)) {
+								// If it does, compute the distance between that point on the triangle and the screen
+								float pixelDepth = computeDepth(v0, v1, v2, make_float3(u, v, w));
+								// If the point is closer than any point we have seen thus far, render it.
+								// Otherwise it is hidden behind another object, and we can throw it away
+								// Because it will be invisible anyway.
+				        if (pixelDepth >= -1 && pixelDepth <= 1) {
+										int pixelDepthConverted = depthFloatToInt(pixelDepth);
+				            if (pixelDepthConverted < depthBuffer[y * width + x]) {
+									    // If it is, we update the depth buffer to the new depth.
+									    depthBuffer[y * width + x] = pixelDepthConverted;
 
-					    // And finally we determine the colour of the pixel, now that
-					    // we know our pixel is the closest we have seen thus far.
-						runFragmentShader(frameBuffer, x + (width * y), mesh, triangleIndex, make_float3(u, v, w));
-					}
+									    // And finally we determine the colour of the pixel, now that
+									    // we know our pixel is the closest we have seen thus far.
+										runFragmentShader(frameBuffer, x + (width * y), mesh, triangleIndex, make_float3(u, v, w));
+										}
+								}
+						}
 				}
-			}
 		}
-	}
 }
 
 
@@ -289,31 +292,28 @@ void renderMeshes(
         int* depthBuffer
 ) {
 
-		int loop_time = 0;
-		std::chrono::high_resolution_clock::time_point start;
-		std::chrono::high_resolution_clock::time_point end;
     for(unsigned int item = 0; item < totalItemsToRender; item++) {
         workItemGPU objectToRender = workQueue[item];
         for (unsigned int meshIndex = 0; meshIndex < meshCount; meshIndex++) {
-	          for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
-								start = std::chrono::high_resolution_clock::now();
-	              float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
-	              float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
-	              float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
+						start = std::chrono::system_clock::now();
+            for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
+								count++;
+                float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
+                float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
+                float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
 
-	              runVertexShader(v0, objectToRender.distanceOffset, objectToRender.scale, width, height);
-	              runVertexShader(v1, objectToRender.distanceOffset, objectToRender.scale, width, height);
-	              runVertexShader(v2, objectToRender.distanceOffset, objectToRender.scale, width, height);
+                runVertexShader(v0, objectToRender.distanceOffset, objectToRender.scale, width, height);
+                runVertexShader(v1, objectToRender.distanceOffset, objectToRender.scale, width, height);
+                runVertexShader(v2, objectToRender.distanceOffset, objectToRender.scale, width, height);
 
-	              rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
-								end = std::chrono::high_resolution_clock::now();
-								loop_time += std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
-
-	          }
+                rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
+            }
+						end = std::chrono::system_clock::now();
+						time_taken += std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
         }
     }
-		std::cout << (((float)loop_time)/((float)meshCount))/((float)totalItemsToRender) << std::endl;
-		std::cout << "MeshCount: " << meshCount << std::endl;
+		std::cout << "Time taken: " << time_taken << std::endl;
+		std::cout << "Number of times: " << count << std::endl;
 }
 
 
@@ -396,6 +396,11 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
 	}
 
 	checkCudaErrors(cudaSetDevice(0));
+
+	void *dev_ptr;
+
+	checkCudaErrors(cudaMalloc(&dev_ptr, sizeof(int)*(width*height)));
+	checkCudaErrors(cudaMalloc(&dev_ptr, sizeof(char)*(width*height*4)));
 
 	int* depthBuffer = new int[width * height];
 	for(unsigned int i = 0; i < width * height; i++) {
