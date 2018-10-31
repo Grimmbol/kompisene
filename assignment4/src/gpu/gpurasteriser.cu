@@ -293,17 +293,20 @@ void renderMeshes(
     for(unsigned int item = 0; item < totalItemsToRender; item++) {
         workItemGPU objectToRender = workQueue[item];
         for (unsigned int meshIndex = 0; meshIndex < meshCount; meshIndex++) {
-            for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
-                float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
-                float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
-                float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
+            //for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
+						int index = blockDim.x * blockIdx.x + threadIdx.x;
+						if (index < meshes[meshIndex].vertexCount/3) {
+							float4 v0 = meshes[meshIndex].vertices[index * 3 + 0];
+							float4 v1 = meshes[meshIndex].vertices[index * 3 + 1];
+							float4 v2 = meshes[meshIndex].vertices[index * 3 + 2];
 
-                runVertexShader(v0, objectToRender.distanceOffset, objectToRender.scale, width, height);
-                runVertexShader(v1, objectToRender.distanceOffset, objectToRender.scale, width, height);
-                runVertexShader(v2, objectToRender.distanceOffset, objectToRender.scale, width, height);
+							runVertexShader(v0, objectToRender.distanceOffset, objectToRender.scale, width, height);
+	            runVertexShader(v1, objectToRender.distanceOffset, objectToRender.scale, width, height);
+	            runVertexShader(v2, objectToRender.distanceOffset, objectToRender.scale, width, height);
 
-                rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
-            }
+	            rasteriseTriangle(v0, v1, v2, meshes[meshIndex], index, frameBuffer, depthBuffer, width, height);
+						}
+            //}
         }
     }
 }
@@ -508,7 +511,7 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
 		checkCudaErrors(cudaMalloc(&GPU_workQueue, sizeof(workItemGPU)*totalItemsToRender));
 		checkCudaErrors(cudaMemcpy(GPU_workQueue, workQueue, sizeof(workItemGPU)*totalItemsToRender, cudaMemcpyHostToDevice));
 
-		renderMeshes<<<1,32>>>(
+		renderMeshes<<<(totalItemsToRender+255)/256, 256>>>(
 				totalItemsToRender, GPU_workQueue,
 				GPU_array_meshes, meshes.size(),
 				width, height, GPU_fb_ptr, GPU_db_ptr);
