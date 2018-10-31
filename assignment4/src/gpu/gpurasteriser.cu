@@ -9,10 +9,6 @@
 #include "cuda_runtime.h"
 #include "utilities/cuda_error_helper.hpp"
 
-int count = 0;
-std::chrono::high_resolution_clock::time_point start;
-std::chrono::high_resolution_clock::time_point end;
-int time_taken = 0;
 // UTILITY FUNCTIONS HAVE BEEN MOVED INTO THE KERNEL SOURCE FILE ITSELF
 // CUDA relocatable and separable compilation is possible, but due to the many possible
 // problems it can cause on different platforms, I decided to take the safe route instead
@@ -115,6 +111,7 @@ struct workItemGPU {
     workItemGPU() : scale(1), distanceOffset(make_float3(0, 0, 0)) {}
 };
 
+__device__
 void runVertexShader( float4 &vertex,
                       float3 positionOffset,
                       float scale,
@@ -178,7 +175,7 @@ void runVertexShader( float4 &vertex,
     vertex.y = (vertex.y + 0.5f) * (float) height;
 }
 
-
+__device__
 void runFragmentShader( unsigned char* frameBuffer,
 						unsigned int const baseIndex,
 						GPUMesh &mesh,
@@ -230,6 +227,7 @@ void runFragmentShader( unsigned char* frameBuffer,
  * @param width                   width of the image
  * @param height                  height of the image
  */
+ __device__
 void rasteriseTriangle( float4 &v0, float4 &v1, float4 &v2,
                         GPUMesh &mesh,
                         unsigned int triangleIndex,
@@ -273,14 +271,14 @@ void rasteriseTriangle( float4 &v0, float4 &v1, float4 &v2,
 									    // And finally we determine the colour of the pixel, now that
 									    // we know our pixel is the closest we have seen thus far.
 										runFragmentShader(frameBuffer, x + (width * y), mesh, triangleIndex, make_float3(u, v, w));
-										}
+									}
 								}
 						}
 				}
 		}
 }
 
-
+__global__
 void renderMeshes(
         unsigned long totalItemsToRender,
         workItemGPU* workQueue,
@@ -295,9 +293,7 @@ void renderMeshes(
     for(unsigned int item = 0; item < totalItemsToRender; item++) {
         workItemGPU objectToRender = workQueue[item];
         for (unsigned int meshIndex = 0; meshIndex < meshCount; meshIndex++) {
-						start = std::chrono::system_clock::now();
             for(unsigned int triangleIndex = 0; triangleIndex < meshes[meshIndex].vertexCount / 3; triangleIndex++) {
-								count++;
                 float4 v0 = meshes[meshIndex].vertices[triangleIndex * 3 + 0];
                 float4 v1 = meshes[meshIndex].vertices[triangleIndex * 3 + 1];
                 float4 v2 = meshes[meshIndex].vertices[triangleIndex * 3 + 2];
@@ -308,12 +304,8 @@ void renderMeshes(
 
                 rasteriseTriangle(v0, v1, v2, meshes[meshIndex], triangleIndex, frameBuffer, depthBuffer, width, height);
             }
-						end = std::chrono::system_clock::now();
-						time_taken += std::chrono::duration_cast<std::chrono::microseconds>(end-start).count();
         }
     }
-		std::cout << "Time taken: " << time_taken << std::endl;
-		std::cout << "Number of times: " << count << std::endl;
 }
 
 
@@ -362,11 +354,24 @@ void fillWorkQueue(
 }
 
 __global__
-void fillBuffer(void *dev_ptr) {
-		 int i = blockDim.x * blockIdx.x + threadIdx.x;
-		 if (i < width*height) {
-			 		
-		 }
+void fillDepthBuffer(int *GPU_db_ptr, int depthBufferLength) {
+		int i = blockDim.x * blockIdx.x + threadIdx.x;
+		if (i < depthBufferLength) {
+				GPU_db_ptr[i] = 16777216;
+		}
+}
+
+__global__
+void fillFrameBuffer(unsigned char *GPU_fb_ptr, int frameBufferLength) {
+		int i = blockDim.x * blockIdx.x + threadIdx.x;
+		if (i < frameBufferLength) {
+				if (i % 4 == 3) {
+						GPU_fb_ptr[i] = 255;
+				}
+				else {
+						GPU_fb_ptr[i] = 0;
+				}
+		}
 }
 
 // This function kicks off the rasterisation process.
@@ -374,46 +379,92 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
     std::cout << "Rendering an image on the GPU.." << std::endl;
     std::cout << "Loading '" << inputFile << "' file... " << std::endl;
 
+		//CUDA SETUP
+		int count = 0;
+		checkCudaErrors(cudaGetDeviceCount(&count));
+		std::cout << count << std::endl;
+
+		if (count < 1) {
+			std::cout << "No GPU's detected!" << std::endl;
+		}
+
+		std::vector<cudaDeviceProp*> prop_list;
+		for (int i = 0; i < count; i++) {
+			cudaDeviceProp* prop = new cudaDeviceProp; //Remember to delete heap allocated memory
+			checkCudaErrors(cudaGetDeviceProperties(prop, i));
+			std::cout << prop->name << std::endl;
+			prop_list.push_back(prop);
+		}
+
+		checkCudaErrors(cudaSetDevice(0));
+
+		//
     std::vector<GPUMesh> meshes = loadWavefrontGPU(inputFile, false);
+
+		GPUMesh *CPU_array_meshes = new GPUMesh[meshes.size()];
+		GPUMesh *GPU_array_meshes;
+		checkCudaErrors(cudaMalloc(&GPU_array_meshes, sizeof(GPUMesh)*meshes.size()));
+
+		for(unsigned int i = 0; i < meshes.size(); i++) {
+			float4 *GPU_vertices;
+			float3 *GPU_normals;
+
+			checkCudaErrors(cudaMalloc(&GPU_vertices, sizeof(float4)*meshes[i].vertexCount));
+			checkCudaErrors(cudaMalloc(&GPU_normals, sizeof(float4)*meshes[i].vertexCount));
+
+			checkCudaErrors(cudaMemcpy(GPU_vertices, meshes.at(i).vertices, sizeof(float4)*meshes[i].vertexCount, cudaMemcpyHostToDevice));
+			checkCudaErrors(cudaMemcpy(GPU_normals, meshes.at(i).normals, sizeof(float3)*meshes[i].vertexCount, cudaMemcpyHostToDevice));
+
+			CPU_array_meshes[i].vertices = GPU_vertices;
+			CPU_array_meshes[i].normals = GPU_normals;
+			CPU_array_meshes[i].vertexCount = meshes.at(i).vertexCount;
+			CPU_array_meshes[i].objectDiffuseColour = meshes.at(i).objectDiffuseColour;
+			CPU_array_meshes[i].hasNormals = meshes.at(i).hasNormals;
+		}
+
+		checkCudaErrors(cudaMemcpy(GPU_array_meshes, CPU_array_meshes, sizeof(GPUMesh)*meshes.size(), cudaMemcpyHostToDevice));
+
+
+		//Fill depthBuffer and frameBuffer
+		int depthBufferLength = width*height;
+		int frameBufferLength = width*height*4;
+
+		int *GPU_db_ptr;
+		unsigned char *GPU_fb_ptr;
+
+		checkCudaErrors(cudaMalloc(&GPU_db_ptr, sizeof(int)*depthBufferLength));
+		checkCudaErrors(cudaMalloc(&GPU_fb_ptr, sizeof(unsigned char)*frameBufferLength));
+
+		fillDepthBuffer<<<(depthBufferLength+255)/256, 256>>>(GPU_db_ptr, depthBufferLength);
+		fillFrameBuffer<<<(frameBufferLength+255)/256, 256>>>(GPU_fb_ptr, frameBufferLength);
+
+		// Wait for GPU to finish before accessing on host
+		checkCudaErrors(cudaDeviceSynchronize());
+
+		/*int *CPU_db_ptr = (int*)malloc(sizeof(int)*depthBufferLength);
+	 	unsigned char *CPU_fb_ptr = (unsigned char*)malloc(sizeof(unsigned char)*frameBufferLength);
+
+		checkCudaErrors(cudaMemcpy(CPU_db_ptr, GPU_db_ptr, sizeof(int)*depthBufferLength, cudaMemcpyDeviceToHost));
+		checkCudaErrors(cudaMemcpy(CPU_fb_ptr, GPU_fb_ptr, sizeof(unsigned char)*frameBufferLength, cudaMemcpyDeviceToHost));*/
+
 
     // We first need to allocate some buffers.
     // The framebuffer contains the image being rendered.
-    unsigned char* frameBuffer = new unsigned char[width * height * 4];
+		unsigned char* frameBuffer = (unsigned char*)malloc(sizeof(unsigned char)*frameBufferLength);
+    //unsigned char* frameBuffer = new unsigned char[width * height * 4];
     // The depth buffer is used to make sure that objects closer to the camera occlude/obscure objects that are behind it
-    for (unsigned int i = 0; i < (4 * width * height); i+=4) {
+    /*for (unsigned int i = 0; i < (4 * width * height); i+=4) {
 		frameBuffer[i + 0] = 0;
 		frameBuffer[i + 1] = 0;
 		frameBuffer[i + 2] = 0;
 		frameBuffer[i + 3] = 255;
-	}
+	}*/
 
-	int count = 0;
-	checkCudaErrors(cudaGetDeviceCount(&count));
-	std::cout << count << std::endl;
-
-	if (count < 1) {
-		std::cout << "No GPU's detected!" << std::endl;
-	}
-
-	std::vector<cudaDeviceProp*> prop_list;
-	for (int i = 0; i < count; i++) {
-		cudaDeviceProp* prop = new cudaDeviceProp; //Remember to delete heap allocated memory
-		checkCudaErrors(cudaGetDeviceProperties(prop, i));
-		std::cout << prop->name << std::endl;
-		prop_list.push_back(prop);
-	}
-
-	checkCudaErrors(cudaSetDevice(0));
-
-	void *dev_ptr;
-
-	checkCudaErrors(cudaMalloc(&dev_ptr, sizeof(int)*(width*height)));
-	checkCudaErrors(cudaMalloc(&dev_ptr, sizeof(char)*(width*height*4)));
-
-	int* depthBuffer = new int[width * height];
+	//int* depthBuffer = CPU_db_ptr;
+	/*int* depthBuffer = new int[width * height];
 	for(unsigned int i = 0; i < width * height; i++) {
     	depthBuffer[i] = 16777216; // = 2 ^ 24
-  }
+  }*/
 
     float3 boundingBoxMin = make_float3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
     float3 boundingBoxMax = make_float3(std::numeric_limits<float>::min(), std::numeric_limits<float>::min(), std::numeric_limits<float>::min());
@@ -453,10 +504,18 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
     unsigned long counter = 0;
     fillWorkQueue(workQueue, largestBoundingBoxSide, depthLimit, &counter);
 
-	renderMeshes(
-			totalItemsToRender, workQueue,
-			meshes.data(), meshes.size(),
-			width, height, frameBuffer, depthBuffer);
+		workItemGPU *GPU_workQueue;
+		checkCudaErrors(cudaMalloc(&GPU_workQueue, sizeof(workItemGPU)*totalItemsToRender));
+		checkCudaErrors(cudaMemcpy(GPU_workQueue, workQueue, sizeof(workItemGPU)*totalItemsToRender, cudaMemcpyHostToDevice));
+
+		renderMeshes<<<1,32>>>(
+				totalItemsToRender, GPU_workQueue,
+				GPU_array_meshes, meshes.size(),
+				width, height, GPU_fb_ptr, GPU_db_ptr);
+
+		checkCudaErrors(cudaDeviceSynchronize());
+
+		checkCudaErrors(cudaMemcpy(frameBuffer, GPU_fb_ptr, sizeof(unsigned char)*frameBufferLength, cudaMemcpyDeviceToHost));
 
     std::cout << "Finished!" << std::endl;
 
