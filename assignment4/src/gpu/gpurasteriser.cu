@@ -382,7 +382,7 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
     std::cout << "Rendering an image on the GPU.." << std::endl;
     std::cout << "Loading '" << inputFile << "' file... " << std::endl;
 
-		//CUDA SETUP
+		//CUDA setup
 		int count = 0;
 		checkCudaErrors(cudaGetDeviceCount(&count));
 		std::cout << count << std::endl;
@@ -401,7 +401,8 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
 
 		checkCudaErrors(cudaSetDevice(0));
 
-		//
+		auto start = std::chrono::high_resolution_clock::now();
+		//Fill array of meshes in GPU memory
     std::vector<GPUMesh> meshes = loadWavefrontGPU(inputFile, false);
 
 		GPUMesh *CPU_array_meshes = new GPUMesh[meshes.size()];
@@ -515,6 +516,9 @@ std::vector<unsigned char> rasteriseGPU(std::string inputFile, unsigned int widt
 				totalItemsToRender, GPU_workQueue,
 				GPU_array_meshes, meshes.size(),
 				width, height, GPU_fb_ptr, GPU_db_ptr);
+		auto end = std::chrono::high_resolution_clock::now();
+		int total_time = std::chrono::duration_cast<std::chrono::milliseconds>(end-start).count();
+		std::cout << "Time: " << total_time << std::endl;
 
 		checkCudaErrors(cudaDeviceSynchronize());
 
